@@ -16,14 +16,38 @@ namespace Application.UseCases
 {
     public class MovieUseCase: IMovieUseCase
     {
-        private readonly IGenericRepository<Movie> _movieRepository;
+        private readonly IMovieRepository _movieRepository;
         private readonly ILogger<MovieUseCase> _logger;
         private readonly IMapper _mapper;
-        public MovieUseCase(IGenericRepository<Movie> movieRepository, IMapper mapper, ILogger<MovieUseCase> logger)
+        public MovieUseCase(IMovieRepository movieRepository, IMapper mapper, ILogger<MovieUseCase> logger)
         {
             _movieRepository = movieRepository ?? throw new ArgumentNullException(nameof(movieRepository));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
+        }
+        public async Task<OpResult> GetMoviesByGenreAsync(int genreId, int pageNumber = 1, int pageSize = 10)
+        {
+            if (genreId <= 0)
+            {
+                _logger.LogWarning("GetMoviesByGenreAsync called with invalid genre id: {GenreId}", genreId);
+                return new OpResult() { Success = false, Message = "Invalid genre id", StatusCode = 400, Data = null };
+            }
+
+            try
+            {
+                var result = await _movieRepository.GetMoviesByGenreAsync(genreId, pageNumber, pageSize);
+                return new OpResult() { Success = true, Message = "Data retrieved successfully", StatusCode = 200, Data = result };
+            }
+            catch(RepositoryException ex)
+            {
+                _logger.LogError(ex, "Error getting movies by genre {GenreId}", genreId);
+                return new OpResult() { Success = false, Message = "Something went wrong", StatusCode = 500, Data = null };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting movies by genre {GenreId}", genreId);
+                return new OpResult() { Success = false, Message = "Something went wrong", StatusCode = 500, Data = null };
+            }
         }
         public async Task<OpResult> AddMovie(AddMovieDTO movieDTO)
         {

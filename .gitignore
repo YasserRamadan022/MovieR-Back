@@ -13,3 +13,5 @@
 *.cache
 *.log
 *.pdb
+
+appsettings.json

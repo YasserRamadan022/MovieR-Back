@@ -27,6 +27,7 @@ namespace Infrastructure.Extensions
             });
 
             services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
+            services.AddScoped<IMovieRepository, MovieRepository>();
 
             return services;
         }

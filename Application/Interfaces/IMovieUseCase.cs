@@ -11,5 +11,6 @@ namespace Application.Interfaces
     public interface IMovieUseCase
     {
         Task<OpResult> AddMovie(AddMovieDTO movie);
+        Task<OpResult> GetMoviesByGenreAsync(int genreId, int pageNumber = 1, int pageSize = 10);
     }
 }
