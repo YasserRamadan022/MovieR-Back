@@ -29,12 +29,7 @@ namespace Infrastructure.Repositories
             if (genreId <= 0)
             {
                 _logger.LogWarning("GetMoviesByGenreAsync called with invalid genre id: {GenreId}", genreId);
-                return new PagedResult<Movie>
-                {
-                    PageNumber = pageNumber,
-                    PageSize = pageSize,
-                    TotalCount = 0
-                };
+                throw new ArgumentNullException("Ivalid genre Id");
             }
 
             if (pageNumber < 1) pageNumber = 1;
@@ -68,6 +63,10 @@ namespace Infrastructure.Repositories
                     PageSize = pageSize,
                     TotalCount = totalCount
                 };
+            }
+            catch (ArgumentNullException ex)
+            {
+                throw new RepositoryException("Ivalid genre Id used to retrieve movies by genre", ex);
             }
             catch (Exception ex)
             {

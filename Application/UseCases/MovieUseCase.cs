@@ -36,10 +36,24 @@ namespace Application.UseCases
             try
             {
                 var result = await _movieRepository.GetMoviesByGenreAsync(genreId, pageNumber, pageSize);
-                return new OpResult() { Success = true, Message = "Data retrieved successfully", StatusCode = 200, Data = result };
+                var moviesList = _mapper.Map<List<MoviesDTO>>(result.Data);
+                
+                var pagedResult = new PagedResult<MoviesDTO>
+                {
+                    Data = moviesList,
+                    PageNumber = result.PageNumber,
+                    PageSize = result.PageSize,
+                    TotalCount = result.TotalCount
+                };
+                
+                return new OpResult() { Success = true, Message = "Data retrieved successfully", StatusCode = 200, Data = pagedResult };
             }
             catch(RepositoryException ex)
             {
+                if(ex.Message.Contains("Ivalid genre Id"))
+                {
+                    return new OpResult() { Success = false, Message = "Ivalid genre Id", StatusCode = 400, Data = null };
+                }
                 _logger.LogError(ex, "Error getting movies by genre {GenreId}", genreId);
                 return new OpResult() { Success = false, Message = "Something went wrong", StatusCode = 500, Data = null };
             }
