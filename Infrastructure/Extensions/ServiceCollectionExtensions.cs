@@ -28,6 +28,8 @@ namespace Infrastructure.Extensions
 
             services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
             services.AddScoped<IMovieRepository, MovieRepository>();
+            services.AddScoped<IActorRepository, ActorRepository>();
+            services.AddScoped<IDirectorRepository, DirectorRepository>();
 
             return services;
         }

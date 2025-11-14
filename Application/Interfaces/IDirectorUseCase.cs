@@ -11,5 +11,6 @@ namespace Application.Interfaces
     public interface IDirectorUseCase
     {
         Task<OpResult> AddDirector(AddDirectorDTO directorDTO);
+        Task<OpResult> GetDirectorMovies(int directorId, int pageNumber = 1, int pageSize = 10);
     }
 }

@@ -11,5 +11,6 @@ namespace Application.Interfaces
     public interface IActorUseCase
     {
         Task<OpResult> AddActor(AddActorDTO actorDTO);
+        Task<OpResult> GetActorMovies(int actorId, int pageNumber = 1, int pageSize = 10);
     }
 }

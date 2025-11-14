@@ -16,17 +16,54 @@ namespace Application.UseCases
 {
     public class DirectorUseCase: IDirectorUseCase
     {
-        private readonly IGenericRepository<Director> _directorRepository;
+        private readonly IDirectorRepository _directorRepository;
         private readonly ILogger<DirectorUseCase> _logger;
         private readonly IMapper _mapper;
 
-        public DirectorUseCase(IGenericRepository<Director> directorRepository, ILogger<DirectorUseCase> logger, IMapper mapper)
+        public DirectorUseCase(IDirectorRepository directorRepository, ILogger<DirectorUseCase> logger, IMapper mapper)
         {
             _directorRepository = directorRepository ?? throw new ArgumentNullException(nameof(directorRepository));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
         }
+        public async Task<OpResult> GetDirectorMovies(int directorId, int pageNumber = 1, int pageSize = 10)
+        {
+            if (directorId <= 0)
+            {
+                _logger.LogWarning("GetActorMovies called with invalid director id: {DirectorId}", directorId);
+                return new OpResult() { Success = false, Message = "Invalid director id", StatusCode = 400, Data = null };
+            }
 
+            try
+            {
+                var result = await _directorRepository.GetDirectorMovies(directorId, pageNumber, pageSize);
+                var moviesList = _mapper.Map<List<MoviesDTO>>(result.Data);
+
+                var pagedResult = new PagedResult<MoviesDTO>
+                {
+                    Data = moviesList,
+                    PageNumber = result.PageNumber,
+                    PageSize = result.PageSize,
+                    TotalCount = result.TotalCount
+                };
+
+                return new OpResult() { Success = true, Message = "Data retrieved successfully", StatusCode = 200, Data = pagedResult };
+            }
+            catch (RepositoryException ex)
+            {
+                if (ex.Message.Contains("Ivalid director Id"))
+                {
+                    return new OpResult() { Success = false, Message = "Ivalid director Id", StatusCode = 400, Data = null };
+                }
+                _logger.LogError(ex, "Error getting movies by director {DirectorId}", directorId);
+                return new OpResult() { Success = false, Message = "Something went wrong", StatusCode = 500, Data = null };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting movies by director {DirectorId}", directorId);
+                return new OpResult() { Success = false, Message = "Something went wrong", StatusCode = 500, Data = null };
+            }
+        }
         public async Task<OpResult> AddDirector(AddDirectorDTO directorDTO)
         {
             if(directorDTO == null)
