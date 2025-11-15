@@ -9,6 +9,7 @@ namespace Core.Domain.Entities
 {
     public class ApplicationUser: IdentityUser
     {
+        public string ApplicationUserName { get; set; } = string.Empty;
         public virtual ICollection<Vote> Votes { get; set; } = new List<Vote>();
         public virtual ICollection<Favorite> Favorites { get; set;} = new List<Favorite>();
         public virtual ICollection<Interest> Interests { get; set; } = new List<Interest>();
