@@ -21,6 +21,7 @@ namespace Application.Extensions
             services.AddScoped<IMovieUseCase, MovieUseCase>();
             services.AddScoped<IActorUseCase, ActorUseCase>();
             services.AddScoped<IDirectorUseCase, DirectorUseCase>();
+            services.AddScoped<IGenreUseCase, GenreUseCase>();
 
             return services;
         }
