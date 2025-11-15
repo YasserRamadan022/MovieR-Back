@@ -17,7 +17,7 @@ namespace Application.Validators
                 .WithMessage("Actor name is required")
                 .MaximumLength(100)
                 .WithMessage("Actor name cannot exceed 100 characters")
-                .Matches(@"^[A-Za-z\s\-'\.]+$")
+                .Matches(@"^[\p{L}\s\-'\.]+$")
                 .WithMessage("Actor name contains invalid characters");
 
             RuleFor(a => a.BirthDate)

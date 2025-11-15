@@ -17,7 +17,7 @@ namespace Application.Validators
                 .WithMessage("Director name is required")
                 .MaximumLength(100)
                 .WithMessage("Director name cannot exceed 100 characters")
-                .Matches(@"^[A-Za-z\s\-'\.]+$")
+                .Matches(@"^[\p{L}\s\-'\.]+$")
                 .WithMessage("Director name contains invalid characters");
 
             RuleFor(a => a.BirthDate)
