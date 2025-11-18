@@ -4,9 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Application.DTOs
+namespace Application.DTOs.Dashboard
 {
-    public class AddDirectorDTO
+    public class AddActorDTO
     {
         public string Name { get; set; }
         public DateOnly BirthDate { get; set; }

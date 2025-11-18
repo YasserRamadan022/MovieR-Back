@@ -1,4 +1,5 @@
 ﻿using Application.DTOs;
+using Application.DTOs.Dashboard;
 using AutoMapper;
 using Core.Domain.Entities;
 using System;

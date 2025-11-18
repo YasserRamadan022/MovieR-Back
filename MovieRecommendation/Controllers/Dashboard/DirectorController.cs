@@ -1,4 +1,4 @@
-﻿using Application.DTOs;
+﻿using Application.DTOs.Dashboard;
 using Application.Interfaces;
 using Application.UseCases;
 using Microsoft.AspNetCore.Http;
