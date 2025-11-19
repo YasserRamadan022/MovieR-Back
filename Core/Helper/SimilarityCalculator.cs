@@ -70,6 +70,50 @@ namespace Core.Helper
                    (directorSimilarity * directorWeight);
         }
 
+        public static double CalculateMovieSimilarity(MovieSimilarity data)
+        {
+            var movieGenreIds = data.Movie.GenreIds.ToHashSet();
+            var movieActorIds = data.Movie.ActorIds.ToHashSet();
+
+            var movieGenreVector = data.PreferredGenreIds.ToDictionary(
+                g => g,
+                g => movieGenreIds.Contains(g) ? 1.0 : 0.0);
+
+            var movieActorVector = data.PreferredActorIds.ToDictionary(
+                a => a,
+                a => movieActorIds.Contains(a) ? 1.0 : 0.0);
+
+            var movieDirectorVector = data.PreferredDirectorIds.ToDictionary(
+                d => d,
+                d => (data.Movie.DirectorId == d) ? 1.0 : 0.0);
+
+
+            // Calculate similarity for each dimension
+            double genreSimilarity = CalculateCosineSimilarity(
+                data.UserGenreVector,
+                movieGenreVector);
+
+            double actorSimilarity = CalculateCosineSimilarity(
+                data.UserActorVector,
+                movieActorVector);
+
+            double directorSimilarity = CalculateCosineSimilarity(
+                data.UserDirectorVector,
+                movieDirectorVector);
+
+            // Combine similarities with weights
+            double finalSimilarity = CalculateWeightedSimilarity(
+                genreSimilarity,
+                actorSimilarity,
+                directorSimilarity,
+                genreWeight: 0.5,
+                actorWeight: 0.3,
+                directorWeight: 0.2
+            );
+
+            return finalSimilarity;
+        }
+
         /// <summary>
         /// Calculates the weighted preference for a list of movies based on user interactions.
         /// </summary>
@@ -89,22 +133,22 @@ namespace Core.Helper
                 if (preferences.RatedMovies.ContainsKey(movieId))
                 {
                     var rating = preferences.RatedMovies[movieId];
-                    movieWeight = (double)rating / 5.0;
+                    movieWeight = (double)rating / 10.0;
                     shouldCount = true;
                 }
                 else if (preferences.FavoritedMovies.Contains(movieId))
                 {
-                    movieWeight = 0.9; // Equivalent to 4.5/5.0
+                    movieWeight = 0.9;
                     shouldCount = true;
                 }
                 else if (preferences.UpvotedMovies.Contains(movieId))
                 {
-                    movieWeight = 0.7; // Equivalent to 3.5/5.0
+                    movieWeight = 0.7;
                     shouldCount = true;
                 }
                 else if (preferences.InterestedMovies.Contains(movieId))
                 {
-                    movieWeight = 0.5; // Equivalent to 2.5/5.0
+                    movieWeight = 0.5;
                     shouldCount = true;
                 }
 

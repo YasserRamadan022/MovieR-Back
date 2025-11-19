@@ -54,6 +54,8 @@ namespace MovieRecommendation
             .AddEntityFrameworkStores<AppDbContext>()
             .AddDefaultTokenProviders();
 
+            builder.Services.AddMemoryCache();
+
             var key = Encoding.UTF8.GetBytes(jwtSettings.SecretKey);
 
             builder.Services.AddAuthentication(options =>
