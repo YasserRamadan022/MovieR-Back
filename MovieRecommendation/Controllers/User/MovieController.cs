@@ -1,5 +1,6 @@
 ﻿using Application.DTOs;
 using Application.Interfaces;
+using Core.Domain.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -18,10 +19,41 @@ namespace MovieRecommendation.Controllers.User
         }
         [Authorize]
         [HttpPost("ToggleMovieVote")]
-        public async Task<IActionResult> ToggleMovieVote(MovieVoteDTO movieVoteDTO)
+        public async Task<IActionResult> ToggleMovieVote([FromBody] MovieVoteDTO movieVoteDTO)
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new OpResult { Success = false, Message = "User not authenticated", StatusCode = 401 });
+            }
+
             var result = await _movieUseCase.VoteAsync(userId, movieVoteDTO);
+            return StatusCode(result.StatusCode, result);
+        }
+        [Authorize]
+        [HttpPost("RateMovie")]
+        public async Task<IActionResult> RateMovie([FromBody] MovieRateDTO movieRateDTO)
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new OpResult { Success = false, Message = "User not authenticated", StatusCode = 401 });
+            }
+
+            var result = await _movieUseCase.RateAsync(userId, movieRateDTO);
+            return StatusCode(result.StatusCode, result);
+        }
+        [Authorize]
+        [HttpDelete("DeleteRating/{movieId}")]
+        public async Task<IActionResult> DeleteRating(int movieId)
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new OpResult { Success = false, Message = "User not authenticated", StatusCode = 401 });
+            }
+
+            var result = await _movieUseCase.RemoveRateAsync(userId, movieId);
             return StatusCode(result.StatusCode, result);
         }
     }

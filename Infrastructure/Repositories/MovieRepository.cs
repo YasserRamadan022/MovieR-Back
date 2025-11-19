@@ -75,6 +75,81 @@ namespace Infrastructure.Repositories
                 throw new RepositoryException("An unexpected error occurred while retrieving movies by genre", ex);
             }
         }
+
+        public async Task<bool> RateAsync(string userId, int movieId, int rating)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+            {
+                _logger.LogWarning("RateAsync called with invalid userId: {UserId}", userId);
+                throw new RepositoryException("Invalid userId");
+            }
+
+            var movie = await _context.Movies.FindAsync(movieId);
+            if (movie == null)
+            {
+                _logger.LogWarning("RateAsync called with invalid movieId: {MovieId}", movieId);
+                throw new RepositoryException("Invalid movieId");
+            }
+
+            var existingRate = await _context.Ratings
+                    .FirstOrDefaultAsync(v => v.UserId == userId && v.MovieId == movieId);
+
+            if (existingRate == null)
+            {
+                var newRate = new Rating()
+                {
+                    UserId = userId,
+                    MovieId = movieId,
+                    RatingValue = rating,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _context.Ratings.AddAsync(newRate);
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            else if(existingRate.RatingValue != rating)
+            {
+                existingRate.RatingValue = rating;
+                existingRate.UpdatedAt = DateTime.UtcNow;
+                _context.Ratings.Update(existingRate);
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            else
+            {
+                return true;
+            }
+        }
+        public async Task<bool> RemoveRateAsync(string userId, int movieId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+            {
+                _logger.LogWarning("RateAsync called with invalid userId: {UserId}", userId);
+                throw new RepositoryException("Invalid userId");
+            }
+
+            var movie = await _context.Movies.FindAsync(movieId);
+            if (movie == null)
+            {
+                _logger.LogWarning("RateAsync called with invalid movieId: {MovieId}", movieId);
+                throw new RepositoryException("Invalid movieId");
+            }
+
+            var existingRate = await _context.Ratings
+                    .FirstOrDefaultAsync(v => v.UserId == userId && v.MovieId == movieId);
+
+            if (existingRate == null)
+            {
+                return true;
+            }
+
+            _context.Ratings.Remove(existingRate);
+            await _context.SaveChangesAsync();
+            return true;
+        }
         public async Task<bool> ToggleVoteAsync(string userId, int movieId, VoteType voteType)
         {
             var user = await _context.Users.FindAsync(userId);

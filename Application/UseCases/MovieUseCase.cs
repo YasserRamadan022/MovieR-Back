@@ -131,5 +131,75 @@ namespace Application.UseCases
                 return new OpResult() { Success = false, Message = "An error occurred while processing the vote", StatusCode = 500 };
             }
         }
+
+        public async Task<OpResult> RateAsync(string userId, MovieRateDTO rateDTO)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(userId))
+                {
+                    _logger.LogWarning("User ID is null or empty.");
+                    return new OpResult() { Success = false, Message = "User ID cannot be null or empty", StatusCode = 400 };
+                }
+
+                var result = await _movieRepository.RateAsync(userId, rateDTO.MovieId, rateDTO.RatingValue);
+                return new OpResult() { Data = result, Success = true, Message = "Rating processed successfully", StatusCode = 200 };
+            }
+            catch (RepositoryException ex)
+            {
+                if (ex.Message.Contains("Invalid userId"))
+                {
+                    _logger.LogWarning("Invalid user ID provided.");
+                    return new OpResult() { Success = false, Message = "Invalid user ID", StatusCode = 400 };
+                }
+                if (ex.Message.Contains("Invalid movieId"))
+                {
+                    _logger.LogWarning("Invalid movie ID provided.");
+                    return new OpResult() { Success = false, Message = "Invalid movie ID", StatusCode = 400 };
+                }
+                _logger.LogError(ex, "An error occurred while processing the rate.");
+                return new OpResult() { Success = false, Message = "An error occurred while processing the rate", StatusCode = 500 };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An error occurred while processing the rate.");
+                return new OpResult() { Success = false, Message = "An error occurred while processing the rate", StatusCode = 500 };
+            }
+        }
+
+        public async Task<OpResult> RemoveRateAsync(string userId, int movieId)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(userId))
+                {
+                    _logger.LogWarning("User ID is null or empty.");
+                    return new OpResult() { Success = false, Message = "User ID cannot be null or empty", StatusCode = 400 };
+                }
+
+                var result = await _movieRepository.RemoveRateAsync(userId, movieId);
+                return new OpResult() { Data = result, Success = true, Message = "Rate deleted successfully", StatusCode = 200 };
+            }
+            catch (RepositoryException ex)
+            {
+                if (ex.Message.Contains("Invalid userId"))
+                {
+                    _logger.LogWarning("Invalid user ID provided.");
+                    return new OpResult() { Success = false, Message = "Invalid user ID", StatusCode = 400 };
+                }
+                if (ex.Message.Contains("Invalid movieId"))
+                {
+                    _logger.LogWarning("Invalid movie ID provided.");
+                    return new OpResult() { Success = false, Message = "Invalid movie ID", StatusCode = 400 };
+                }
+                _logger.LogError(ex, "An error occurred while deleting the rate.");
+                return new OpResult() { Success = false, Message = "An error occurred while deleting the rate", StatusCode = 500 };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An error occurred while deleting the rate.");
+                return new OpResult() { Success = false, Message = "An error occurred while deleting the rate", StatusCode = 500 };
+            }
+        }
     }
 }
