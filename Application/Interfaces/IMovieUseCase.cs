@@ -1,4 +1,5 @@
-﻿using Application.DTOs.Dashboard;
+﻿using Application.DTOs;
+using Application.DTOs.Dashboard;
 using Core.Domain.Common;
 using System;
 using System.Collections.Generic;
@@ -12,5 +13,6 @@ namespace Application.Interfaces
     {
         Task<OpResult> AddMovie(AddMovieDTO movie);
         Task<OpResult> GetMoviesByGenreAsync(int genreId, int pageNumber = 1, int pageSize = 10);
+        Task<OpResult> VoteAsync(string userId, MovieVoteDTO voteDTO);
     }
 }

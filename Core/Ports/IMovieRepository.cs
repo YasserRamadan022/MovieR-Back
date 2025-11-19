@@ -1,5 +1,6 @@
 ﻿using Core.Domain.Common;
 using Core.Domain.Entities;
+using Core.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,5 +12,6 @@ namespace Core.Ports
     public interface IMovieRepository: IGenericRepository<Movie>
     {
         Task<PagedResult<Movie>> GetMoviesByGenreAsync(int genreId, int pageNumber = 1, int pageSize = 10);
+        Task<bool> ToggleVoteAsync(string userId, int movieId, VoteType voteType);
     }
 }

@@ -1,6 +1,7 @@
 ﻿using Core.Domain.Common;
 using Core.Domain.Common.RepositoryException;
 using Core.Domain.Entities;
+using Core.Domain.Enums;
 using Core.Ports;
 using Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -72,6 +73,53 @@ namespace Infrastructure.Repositories
             {
                 _logger.LogError(ex, "An unexpected error occurred while getting movies by genre {GenreId}", genreId);
                 throw new RepositoryException("An unexpected error occurred while retrieving movies by genre", ex);
+            }
+        }
+        public async Task<bool> ToggleVoteAsync(string userId, int movieId, VoteType voteType)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+            {
+                _logger.LogWarning("ToggleVoteAsync called with invalid userId: {UserId}", userId);
+                throw new RepositoryException("Invalid userId");
+            }
+
+            var movie = await _context.Movies.FindAsync(movieId);
+            if (movie == null)
+            {
+                _logger.LogWarning("ToggleVoteAsync called with invalid movieId: {MovieId}", movieId);
+                throw new RepositoryException("Invalid movieId");
+            }
+
+            var existingVote = await _context.Votes
+                    .FirstOrDefaultAsync(v => v.UserId == userId && v.MovieId == movieId);
+
+            if (existingVote == null)
+            {
+                var newVote = new Vote()
+                {
+                    UserId = userId,
+                    MovieId = movieId,
+                    VoteType = voteType,
+                    CreatedAt = DateTime.UtcNow
+                };
+                await _context.Votes.AddAsync(newVote);
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            else if(existingVote.VoteType != voteType)
+            {
+                existingVote.VoteType = voteType;
+                existingVote.CreatedAt = DateTime.UtcNow;
+                _context.Votes.Update(existingVote);
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            else
+            {
+                _context.Votes.Remove(existingVote);
+                await _context.SaveChangesAsync();
+                return true;
             }
         }
     }

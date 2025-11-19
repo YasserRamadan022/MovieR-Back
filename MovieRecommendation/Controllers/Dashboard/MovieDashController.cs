@@ -9,10 +9,10 @@ namespace MovieRecommendation.Controllers.Dashboard
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class MovieController : ControllerBase
+    public class MovieDashController : ControllerBase
     {
         private readonly IMovieUseCase _movieUseCase;
-        public MovieController(IMovieUseCase movieUseCase)
+        public MovieDashController(IMovieUseCase movieUseCase)
         {
             _movieUseCase = movieUseCase ?? throw new ArgumentNullException(nameof(movieUseCase));
         }
