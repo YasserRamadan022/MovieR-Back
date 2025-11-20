@@ -1,6 +1,7 @@
 ﻿using Core.Ports;
 using Infrastructure.Persistence;
 using Infrastructure.Repositories;
+using Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,6 +32,7 @@ namespace Infrastructure.Extensions
             services.AddScoped<IRecommendationRepository, RecommendationRepository>();
             services.AddScoped<IActorRepository, ActorRepository>();
             services.AddScoped<IDirectorRepository, DirectorRepository>();
+            services.AddScoped<IFuzzyMatcher, FuzzyMatcher>();
 
             return services;
         }
