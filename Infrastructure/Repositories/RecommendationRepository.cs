@@ -939,8 +939,13 @@ namespace Infrastructure.Repositories
                     _logger.LogInformation("User {UserId} has {Count} interactions (>= 20). Using hybrid.",
                         userId, totalInteractions);
 
-                    contentResults = await GetSimilarMoviesByContentAsync(userId);
-                    collaborativeResults = await GetMoviesBySimilarUsersAsync(userId);
+                    var contentTask = GetSimilarMoviesByContentAsync(userId);
+                    var collaborativeTask = GetMoviesBySimilarUsersAsync(userId);
+
+                    await Task.WhenAll(contentTask, collaborativeTask);
+
+                    contentResults = await contentTask;
+                    collaborativeResults = await collaborativeTask;
 
                     _logger.LogInformation("Content-based: {ContentCount}, Collaborative: {CollabCount}",
                         contentResults.Count, collaborativeResults.Count);
@@ -975,6 +980,18 @@ namespace Infrastructure.Repositories
                         .ToList();
                 }
 
+                if (cachedMovieIds == null || !cachedMovieIds.Any())
+                {
+                    _logger.LogWarning("No recommendations generated for user {UserId}", userId);
+                    return new PagedResult<Movie>
+                    {
+                        Data = new List<Movie>(),
+                        PageNumber = pageNumber,
+                        PageSize = pageSize,
+                        TotalCount = 0
+                    };
+                }
+
                 // Cache the results
                 var cacheOptions = new MemoryCacheEntryOptions
                 {
@@ -1007,6 +1024,7 @@ namespace Infrastructure.Repositories
 
             var moviesDict = movies.ToDictionary(m => m.Id);
             var orderedMovies = pagedMovieIds
+                .Where(id => moviesDict.ContainsKey(id))
                 .Select(id => moviesDict[id])
                 .ToList();
 

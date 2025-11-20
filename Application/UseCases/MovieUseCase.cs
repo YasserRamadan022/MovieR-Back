@@ -18,13 +18,15 @@ namespace Application.UseCases
     public class MovieUseCase: IMovieUseCase
     {
         private readonly IMovieRepository _movieRepository;
+        private readonly IRecommendationRepository _recommendationRepository;
         private readonly ILogger<MovieUseCase> _logger;
         private readonly IMapper _mapper;
-        public MovieUseCase(IMovieRepository movieRepository, IMapper mapper, ILogger<MovieUseCase> logger)
+        public MovieUseCase(IMovieRepository movieRepository, IMapper mapper, ILogger<MovieUseCase> logger, IRecommendationRepository recommendationRepository)
         {
             _movieRepository = movieRepository ?? throw new ArgumentNullException(nameof(movieRepository));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
+            _recommendationRepository = recommendationRepository ?? throw new ArgumentNullException(nameof(recommendationRepository));
         }
         public async Task<OpResult> GetMoviesByGenreAsync(int genreId, int pageNumber = 1, int pageSize = 10)
         {
@@ -131,7 +133,6 @@ namespace Application.UseCases
                 return new OpResult() { Success = false, Message = "An error occurred while processing the vote", StatusCode = 500 };
             }
         }
-
         public async Task<OpResult> RateAsync(string userId, MovieRateDTO rateDTO)
         {
             try
@@ -166,7 +167,6 @@ namespace Application.UseCases
                 return new OpResult() { Success = false, Message = "An error occurred while processing the rate", StatusCode = 500 };
             }
         }
-
         public async Task<OpResult> RemoveRateAsync(string userId, int movieId)
         {
             try
@@ -199,6 +199,29 @@ namespace Application.UseCases
             {
                 _logger.LogError(ex, "An error occurred while deleting the rate.");
                 return new OpResult() { Success = false, Message = "An error occurred while deleting the rate", StatusCode = 500 };
+            }
+        }
+        public async Task<OpResult> ForYou(string userId, int pageNumber = 1, int pageSize = 20)
+        {
+            if (userId == null)
+            {
+                _logger.LogWarning("ForYou called with null user id");
+                return new OpResult() { Success = false, Message = "Invalid user id", StatusCode = 400, Data = null };
+            }
+
+            if (pageNumber < 1) pageNumber = 1;
+            if (pageSize < 1) pageSize = 20;
+            if (pageSize > 100) pageSize = 20;
+            try
+            {
+                var recommeddedMovies = await _recommendationRepository.GetHybridRecommendationsAsync(userId, pageNumber, pageSize);
+                var moviesList = _mapper.Map<List<MoviesDTO>>(recommeddedMovies.Data);
+                return new OpResult() { Success = true, Message = "Data retrieved successfully", StatusCode = 200, Data = moviesList };
+            }
+            catch(Exception ex)
+            {
+                _logger.LogError(ex, "Error getting movies for user {UserId}", userId);
+                return new OpResult() { Success = false, Message = "Something went wrong", StatusCode = 500, Data = null };
             }
         }
     }

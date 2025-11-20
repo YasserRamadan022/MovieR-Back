@@ -16,5 +16,6 @@ namespace Application.Interfaces
         Task<OpResult> VoteAsync(string userId, MovieVoteDTO voteDTO);
         Task<OpResult> RateAsync(string userId, MovieRateDTO rateDTO);
         Task<OpResult> RemoveRateAsync(string userId, int movieId);
+        Task<OpResult> ForYou(string userId, int pageNumber = 1, int pageSize = 20);
     }
 }

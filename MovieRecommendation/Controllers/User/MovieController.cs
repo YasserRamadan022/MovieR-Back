@@ -56,5 +56,18 @@ namespace MovieRecommendation.Controllers.User
             var result = await _movieUseCase.RemoveRateAsync(userId, movieId);
             return StatusCode(result.StatusCode, result);
         }
+        [Authorize]
+        [HttpGet("ForYou/{pageNumber}/{pageSize}")]
+        public async Task<IActionResult> ForYou(int pageNumber, int pageSize)
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new OpResult { Success = false, Message = "User not authenticated", StatusCode = 401 });
+            }
+
+            var result = await _movieUseCase.ForYou(userId, pageNumber, pageSize);
+            return StatusCode(result.StatusCode, result);
+        }
     }
 }
