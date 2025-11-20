@@ -751,9 +751,51 @@ namespace Infrastructure.Repositories
             throw new NotImplementedException();
         }
 
-        public Task<List<Movie>> GetPopularMoviesAsync(int pageNumber, int pageSize)
+        public async Task<List<Movie>> GetPopularMoviesAsync(int pageNumber, int pageSize)
         {
-            throw new NotImplementedException();
+            var popularMovieScores = await _context.Movies
+                .AsNoTracking()
+                .Select(m => new
+                {
+                    MovieId = m.Id,
+                    AvgRating = m.Ratings.Any()
+                        ? m.Ratings.Average(r => (double)r.RatingValue)
+                        : 0.0,
+                    RatingCount = m.Ratings.Count(),
+                    FavoriteCount = m.Favorites.Count(),
+                    UpvoteCount = m.Votes.Count(v => v.VoteType == VoteType.Upvote),
+                    InterestCount = m.Interests.Count()
+                })
+                .Where(m => m.RatingCount >= 10 || m.FavoriteCount == 10 || m.UpvoteCount == 10 || m.InterestCount == 10)
+                .ToListAsync();
+
+            var scoredMovies = popularMovieScores
+                .Select(m => new
+                {
+                    m.MovieId,
+                    Score = (m.AvgRating * m.RatingCount * 0.7) +
+                           ((m.FavoriteCount + m.UpvoteCount + m.InterestCount) * 0.3)
+                })
+                .OrderByDescending(m => m.Score)
+                .ToList();
+
+            var skip = (pageNumber - 1) * pageSize;
+            var pagedMovieIds = scoredMovies
+                .Skip(skip)
+                .Take(pageSize)
+                .Select(m => m.MovieId)
+                .ToList();
+
+            var movies = await _context.Movies
+                .AsNoTracking()
+                .Where(m => pagedMovieIds.Contains(m.Id))
+                .ToListAsync();
+
+            var orderedMovies = pagedMovieIds
+                .Select(id => movies.First(m => m.Id == id))
+                .ToList();
+
+            return orderedMovies;
         }
     }
 }
