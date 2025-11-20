@@ -10,48 +10,47 @@ namespace Core.Helper
     public static class SimilarityCalculator
     {
         /// <summary>
-        /// Calculates cosine similarity between user profile and movie feature vector
-        /// Formula: (User Vector · Movie Vector) / (|User Vector| × |Movie Vector|)
+        /// Calculates cosine similarity between vectors
+        /// Formula: (Vector One · Vector Two) / (|Vector One| × |Vector Two|)
         /// </summary>
-        public static double CalculateCosineSimilarity(Dictionary<int, double> userVector, Dictionary<int, double> movieVector)
+        public static double CalculateCosineSimilarity(Dictionary<int, double> vectorOne, Dictionary<int, double> vectorTwo)
         {
-            // Get all unique keys (genres/actors/directors)
-            var allKeys = userVector.Keys.Union(movieVector.Keys).ToList();
+            var allKeys = vectorOne.Keys.Union(vectorTwo.Keys).ToList();
 
             if (allKeys.Count == 0)
                 return 0;
 
-            // Calculate dot product (User Vector · Movie Vector)
+            // Calculate dot product (Vector One · Vector Two)
             double dotProduct = 0;
             foreach (var key in allKeys)
             {
-                var userValue = userVector.GetValueOrDefault(key, 0);
-                var movieValue = movieVector.GetValueOrDefault(key, 0);
+                var userValue = vectorOne.GetValueOrDefault(key, 0);
+                var movieValue = vectorTwo.GetValueOrDefault(key, 0);
                 dotProduct += userValue * movieValue;
             }
 
-            // Calculate magnitude of user vector |User Vector|
-            double userMagnitude = 0;
-            foreach (var value in userVector.Values)
+            // Calculate magnitude of Vector One |Vector One|
+            double vectorOneMagnitude = 0;
+            foreach (var value in vectorOne.Values)
             {
-                userMagnitude += value * value;
+                vectorOneMagnitude += value * value;
             }
-            userMagnitude = Math.Sqrt(userMagnitude);
+            vectorOneMagnitude = Math.Sqrt(vectorOneMagnitude);
 
-            // Calculate magnitude of movie vector |Movie Vector|
-            double movieMagnitude = 0;
-            foreach (var value in movieVector.Values)
+            // Calculate magnitude of Vector Two |Vector Two|
+            double vectorTwoMagnitude = 0;
+            foreach (var value in vectorTwo.Values)
             {
-                movieMagnitude += value * value;
+                vectorTwoMagnitude += value * value;
             }
-            movieMagnitude = Math.Sqrt(movieMagnitude);
+            vectorTwoMagnitude = Math.Sqrt(vectorTwoMagnitude);
 
             // Avoid division by zero
-            if (userMagnitude == 0 || movieMagnitude == 0)
+            if (vectorOneMagnitude == 0 || vectorTwoMagnitude == 0)
                 return 0;
 
-            // Cosine Similarity = Dot Product / (User Magnitude × Movie Magnitude)
-            return dotProduct / (userMagnitude * movieMagnitude);
+            // Cosine Similarity = Dot Product / (Vector One Magnitude × Vector Two Magnitude)
+            return dotProduct / (vectorOneMagnitude * vectorTwoMagnitude);
         }
 
         /// <summary>

@@ -123,6 +123,99 @@ namespace Infrastructure.Repositories
 
             return allActiveUsers;
         }
+        private async Task<Dictionary<string, Dictionary<int, double>>> BuildCandidateUserVectors(List<string> candidateUserIds)
+        {
+            var candidateUserVectors = new Dictionary<string, Dictionary<int, double>>();
+
+            var candidateRatings = await _context.Ratings
+                .AsNoTracking()
+                .Where(r => candidateUserIds.Contains(r.UserId) && r.RatingValue > 4)
+                .Select(r => new { r.UserId, r.MovieId, r.RatingValue })
+                .ToListAsync();
+
+            var candidateUpvotes = await _context.Votes
+                .AsNoTracking()
+                .Where(v => candidateUserIds.Contains(v.UserId) && v.VoteType == VoteType.Upvote)
+                .Select(v => new { v.UserId, v.MovieId })
+                .ToListAsync();
+
+            var candidateFavorites = await _context.Favorites
+                .AsNoTracking()
+                .Where(f => candidateUserIds.Contains(f.UserId))
+                .Select(f => new { f.UserId, f.MovieId })
+                .ToListAsync();
+
+            var candidateInterests = await _context.Interests
+                .AsNoTracking()
+                .Where(i => candidateUserIds.Contains(i.UserId))
+                .Select(i => new { i.UserId, i.MovieId })
+                .ToListAsync();
+
+            var uniqueCandidateUserIds = candidateRatings.Select(r => r.UserId)
+                .Union(candidateUpvotes.Select(v => v.UserId))
+                .Union(candidateFavorites.Select(f => f.UserId))
+                .Union(candidateInterests.Select(i => i.UserId))
+                .Distinct()
+                .ToList();
+
+            foreach (var candidateUserId in uniqueCandidateUserIds)
+            {
+                var userVector = new Dictionary<int, double>();
+
+                var userRatings = candidateRatings
+                    .Where(r => r.UserId == candidateUserId)
+                    .ToList();
+
+                foreach (var rating in userRatings)
+                {
+                    userVector[rating.MovieId] = (double)rating.RatingValue / 10.0;
+                }
+
+                var userFavorites = candidateFavorites
+                    .Where(f => f.UserId == candidateUserId)
+                    .Select(f => f.MovieId)
+                    .ToList();
+
+                foreach (var movieId in userFavorites)
+                {
+                    if (!userVector.ContainsKey(movieId))
+                    {
+                        userVector[movieId] = 0.9;
+                    }
+                }
+
+                var userUpvotes = candidateUpvotes
+                    .Where(v => v.UserId == candidateUserId)
+                    .Select(v => v.MovieId)
+                    .ToList();
+
+                foreach (var movieId in userUpvotes)
+                {
+                    if (!userVector.ContainsKey(movieId))
+                    {
+                        userVector[movieId] = 0.7;
+                    }
+                }
+
+                var userInterests = candidateInterests
+                    .Where(i => i.UserId == candidateUserId)
+                    .Select(i => i.MovieId)
+                    .ToList();
+
+                foreach (var movieId in userInterests)
+                {
+                    if (!userVector.ContainsKey(movieId))
+                    {
+                        userVector[movieId] = 0.5;
+                    }
+                }
+
+                candidateUserVectors[candidateUserId] = userVector;
+            }
+
+            return candidateUserVectors;
+        }
+
         public async Task<List<Movie>> GetSimilarMoviesByContentAsync(UserPreferences preferences, int pageNumber, int pageSize)
         {
             var allLikedMovieIds = preferences.RatedMovies.Keys
@@ -246,7 +339,7 @@ namespace Infrastructure.Repositories
             {
                 int newMoviesCount = Math.Max(0, currentMovieCount - cachedData.MovieCountAtCacheTime);
 
-                if (newMoviesCount < 20)
+                if (newMoviesCount < 30)
                 {
                     candidateMovieIds = cachedData.CandidateMovieIds;
                     useCache = true;
@@ -500,94 +593,152 @@ namespace Infrastructure.Repositories
             // STEP 2: BUILD CANDITADE USERS VECTOR
             // ============================================
 
-            var candidateUserVectors = new Dictionary<string, Dictionary<int, double>>();
+            var candidateUserVectors = await BuildCandidateUserVectors(candidateUserIds);
 
-            var candidateRatings = await _context.Ratings
-                .AsNoTracking()
-                .Where(r => candidateUserIds.Contains(r.UserId) && r.RatingValue > 4)
-                .Select(r => new { r.UserId, r.MovieId, r.RatingValue })
-                .ToListAsync();
+            _logger.LogInformation("Built vectors for {Count} candidate users", candidateUserVectors.Count);
 
-            var candidateUpvotes = await _context.Votes
-                .AsNoTracking()
-                .Where(v => candidateUserIds.Contains(v.UserId) && v.VoteType == VoteType.Upvote)
-                .Select(v => new { v.UserId, v.MovieId })
-                .ToListAsync();
+            if (candidateUserVectors.Count == 0)
+            {
+                _logger.LogInformation("No candidate users found. Falling back to popular movies.");
+                return await GetPopularMoviesAsync(pageNumber, pageSize);
+            }
 
-            var candidateFavorites = await _context.Favorites
-                .AsNoTracking()
-                .Where(f => candidateUserIds.Contains(f.UserId))
-                .Select(f => new { f.UserId, f.MovieId })
-                .ToListAsync();
+            // ============================================
+            // STEP 3: CALCULATE USER-TO-USER SIMILARITY
+            // ============================================
 
-            var candidateInterests = await _context.Interests
-                .AsNoTracking()
-                .Where(i => candidateUserIds.Contains(i.UserId))
-                .Select(i => new { i.UserId, i.MovieId })
-                .ToListAsync();
+            var availableCores = Environment.ProcessorCount;
+            var userSimilarities = new ConcurrentBag<(string UserId, double SimilarityScore)>();
 
-            var uniqueCandidateUserIds = candidateRatings.Select(r => r.UserId)
-                .Union(candidateUpvotes.Select(v => v.UserId))
-                .Union(candidateFavorites.Select(f => f.UserId))
-                .Union(candidateInterests.Select(i => i.UserId))
-                .Distinct()
+            _logger.LogInformation("Calculating similarity for {Count} candidate users using {Cores} CPU core(s)",
+                candidateUserVectors.Count, availableCores);
+
+            if (availableCores > 1 && candidateUserVectors.Count > 10)
+            {
+                var parallelOptions = new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = availableCores
+                };
+
+                Parallel.ForEach(candidateUserVectors, parallelOptions, kvp =>
+                {
+                    var candidateUserId = kvp.Key;
+                    var candidateUserVector = kvp.Value;
+
+                    var similarity = SimilarityCalculator.CalculateCosineSimilarity(
+                        targetUserVector,
+                        candidateUserVector
+                    );
+
+                    if (similarity > 0)
+                    {
+                        userSimilarities.Add((candidateUserId, similarity));
+                    }
+                });
+
+                _logger.LogInformation("Parallel processing completed. Found {Count} similar users (similarity > 0)",
+                    userSimilarities.Count);
+            }
+            else
+            {
+                foreach (var kvp in candidateUserVectors)
+                {
+                    var candidateUserId = kvp.Key;
+                    var candidateUserVector = kvp.Value;
+
+                    var similarity = SimilarityCalculator.CalculateCosineSimilarity(
+                        targetUserVector,
+                        candidateUserVector
+                    );
+
+                    if (similarity > 0)
+                    {
+                        userSimilarities.Add((candidateUserId, similarity));
+                    }
+                }
+
+                _logger.LogInformation("Sequential processing completed. Found {Count} similar users (similarity > 0)",
+                    userSimilarities.Count);
+            }
+
+            // ============================================
+            // STEP 4: SELECT TOP-K SIMILAR USERS
+            // ============================================
+
+            if (!userSimilarities.Any())
+            {
+                return await GetPopularMoviesAsync(pageNumber, pageSize);
+            }
+
+            var sortedSimilarities = userSimilarities
+                    .OrderByDescending(s => s.SimilarityScore)
+                    .ToList();
+
+            const int topKUsers = 20;
+            var topSimilarUsers = sortedSimilarities.Take(topKUsers).ToList();
+
+            var topSimilarUsersDict = topSimilarUsers
+                .ToDictionary(u => u.UserId, u => u.SimilarityScore);
+
+            var topSimilarUserIds = topSimilarUsersDict.Keys.ToHashSet();
+
+            // ============================================
+            // STEP 5: AGGREGATE MOVIE SCORES
+            // ============================================
+
+            var movieScores = new Dictionary<int, double>();
+
+            foreach (var similarUser in topSimilarUsers)
+            {
+                var similarUserId = similarUser.UserId;
+                var similarityScore = topSimilarUsersDict[similarUserId];
+                var userVector = candidateUserVectors[similarUserId];
+
+                foreach (var kvp in userVector)
+                {
+                    var movieId = kvp.Key;
+                    var interactionWeight = kvp.Value;
+
+                    if (!targetUserMovieIds.Contains(movieId))
+                    {
+                        var contribution = similarityScore * interactionWeight;
+
+                        if (!movieScores.ContainsKey(movieId))
+                            movieScores[movieId] = 0;
+
+                        movieScores[movieId] += contribution;
+                    }
+                }
+            }
+
+            // ============================================
+            // STEP 6: RETURN TOP RECOMMENDATIONS
+            // ============================================
+
+            var sortedMovieIds = movieScores
+                .OrderByDescending(kvp => kvp.Value)
+                .Select(kvp => kvp.Key)
                 .ToList();
 
-            foreach (var candidateUserId in uniqueCandidateUserIds)
-            {
-                var userVector = new Dictionary<int, double>();
+            var skip = (pageNumber - 1) * pageSize;
+            var pagedMovieIds = sortedMovieIds
+                .Skip(skip)
+                .Take(pageSize)
+                .ToList();
 
-                var userRatings = candidateRatings
-                    .Where(r => r.UserId == candidateUserId)
-                    .ToList();
+            var movies = await _context.Movies
+                .AsNoTracking()
+                .Where(m => pagedMovieIds.Contains(m.Id))
+                .ToListAsync();
 
-                foreach (var rating in userRatings)
-                {
-                    userVector[rating.MovieId] = (double)rating.RatingValue / 10.0;
-                }
+            var orderedMovies = pagedMovieIds
+                .Select(id => movies.First(m => m.Id == id))
+                .ToList();
 
-                var userFavorites = candidateFavorites
-                    .Where(f => f.UserId == candidateUserId)
-                    .Select(f => f.MovieId)
-                    .ToList();
+            _logger.LogInformation("Returning {Count} movies for page {Page} (page size: {PageSize})",
+                orderedMovies.Count, pageNumber, pageSize);
 
-                foreach (var movieId in userFavorites)
-                {
-                    if (!userVector.ContainsKey(movieId))
-                    {
-                        userVector[movieId] = 0.9;
-                    }
-                }
-
-                var userUpvotes = candidateUpvotes
-                    .Where(v => v.UserId == candidateUserId)
-                    .Select(v => v.MovieId)
-                    .ToList();
-
-                foreach (var movieId in userUpvotes)
-                {
-                    if (!userVector.ContainsKey(movieId))
-                    {
-                        userVector[movieId] = 0.7;
-                    }
-                }
-
-                var userInterests = candidateInterests
-                    .Where(i => i.UserId == candidateUserId)
-                    .Select(i => i.MovieId)
-                    .ToList();
-
-                foreach (var movieId in userInterests)
-                {
-                    if (!userVector.ContainsKey(movieId))
-                    {
-                        userVector[movieId] = 0.5;
-                    }
-                }
-
-                candidateUserVectors[candidateUserId] = userVector;
-            }
-            throw new NotImplementedException();
+            return orderedMovies;
         }
 
         public Task<PagedResult<Movie>> GetHybridRecommendationsAsync(string userId, int pageNumber = 1, int pageSize = 20)
