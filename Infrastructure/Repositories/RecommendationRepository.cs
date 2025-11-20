@@ -215,9 +215,55 @@ namespace Infrastructure.Repositories
 
             return candidateUserVectors;
         }
-
-        public async Task<List<Movie>> GetSimilarMoviesByContentAsync(UserPreferences preferences, int pageNumber, int pageSize)
+        private async Task<int> GetUserInteractions(string userId)
         {
+            var ratingsCount = await _context.Ratings
+                .Where(r => r.UserId == userId && r.RatingValue > 4)
+                .CountAsync();
+
+            var votesCount = await _context.Votes
+                .Where(v => v.UserId == userId)
+                .CountAsync();
+
+            var favoritesCount = await _context.Favorites
+                .Where(f => f.UserId == userId)
+                .CountAsync();
+
+            var interestsCount = await _context.Interests
+                .Where(i => i.UserId == userId)
+                .CountAsync();
+
+            var totalInteractions = ratingsCount + votesCount + favoritesCount + interestsCount;
+            return totalInteractions;
+        }
+        private void NormalizeScores(Dictionary<int, double> scores)
+        {
+            if (!scores.Any()) return;
+
+            var max = scores.Values.Max();
+            var min = scores.Values.Min();
+            var range = max - min;
+
+            if (range == 0)
+            {
+                // All scores are the same, set all to 1.0
+                foreach (var key in scores.Keys.ToList())
+                {
+                    scores[key] = 1.0;
+                }
+            }
+            else
+            {
+                // Min-Max normalization: (value - min) / range
+                foreach (var key in scores.Keys.ToList())
+                {
+                    scores[key] = (scores[key] - min) / range;
+                }
+            }
+        }
+        public async Task<List<(Movie Movie, double Score)>> GetSimilarMoviesByContentAsync(string userId)
+        {
+            var preferences = await GetUserPreferencesAsync(userId);
             var allLikedMovieIds = preferences.RatedMovies.Keys
                 .Union(preferences.UpvotedMovies)
                 .Union(preferences.FavoritedMovies)
@@ -227,7 +273,7 @@ namespace Infrastructure.Repositories
 
             if (allLikedMovieIds.Count == 0)
             {
-                return await GetPopularMoviesAsync(pageNumber, pageSize);
+                return await GetPopularMoviesAsync();
             }
 
             // ============================================
@@ -370,7 +416,7 @@ namespace Infrastructure.Repositories
                         .AsNoTracking()
                         .Where(m => !allLikedMovieIds.Contains(m.Id))
                         .OrderByDescending(m => m.ReleaseYear)
-                        .Take(pageSize * 3)
+                        .Take(100)
                         .Select(m => m.Id);
                 }
                 else
@@ -436,7 +482,7 @@ namespace Infrastructure.Repositories
 
             if (!candidateMovieIds.Any())
             {
-                return await GetPopularMoviesAsync(pageNumber, pageSize);
+                return await GetPopularMoviesAsync();
             }
 
             var candidateMoviesBasic = await _context.Movies
@@ -515,37 +561,64 @@ namespace Infrastructure.Repositories
             }
 
             // ============================================
-            // STEP 4: GET TOP MOVIE IDs
+            // STEP 4: SORT BY SCORE AND APPLY PAGINATION
             // ============================================
 
             var topMovieIds = movieScores
                 .OrderByDescending(ms => ms.SimilarityScore)
-                .Skip((pageNumber - 1) * pageSize)
-                .Take(pageSize)
+                .Take(100)
                 .Select(ms => ms.MovieId)
                 .ToList();
+
+            var sortedMovieScores = movieScores
+                .OrderByDescending(ms => ms.SimilarityScore)
+                .ToList();
+
+            var pagedMovieScores = sortedMovieScores
+                .Take(100)
+                .ToList();
+
+            if (!pagedMovieScores.Any())
+            {
+                _logger.LogInformation("No movies found. Falling back to popular movies.");
+                return await GetPopularMoviesAsync();
+            }
 
             // ============================================
             // STEP 5: LOAD FULL ENTITIES ONLY FOR TOP RESULTS
             // ============================================
 
-            var topMovies = await _context.Movies
+            var pagedMovieIds = pagedMovieScores.Select(ms => ms.MovieId).ToList();
+
+            var movies = await _context.Movies
                 .AsNoTracking()
-                .Where(m => topMovieIds.Contains(m.Id))
+                .Where(m => pagedMovieIds.Contains(m.Id))
                 .Include(m => m.MovieGenres)
                 .Include(m => m.MovieActors)
                 .Include(m => m.Director)
                 .ToListAsync();
 
-            var topMoviesDict = topMovies.ToDictionary(m => m.Id);
-            var topMoviesOrdered = topMovieIds
-                .Select(id => topMoviesDict[id])
+            // ============================================
+            // STEP 6: RETURN MOVIES WITH SCORES
+            // ============================================
+
+            // Create dictionaries for quick lookup
+            var moviesDict = movies.ToDictionary(m => m.Id);
+            var scoresDict = pagedMovieScores.ToDictionary(ms => ms.MovieId, ms => ms.SimilarityScore);
+
+            // Return movies with scores, maintaining order
+            var result = pagedMovieIds
+                .Select(id => (moviesDict[id], scoresDict[id]))
                 .ToList();
 
-            return topMoviesOrdered;
-        }
+            _logger.LogInformation("Returning {Count} content-based movies with scores for page). Score range: {Min:F3} - {Max:F3}",
+                result.Count,
+                result.Any() ? result.Min(r => r.Item2) : 0,
+                result.Any() ? result.Max(r => r.Item2) : 0);
 
-        public async Task<List<Movie>> GetMoviesBySimilarUsersAsync(string userId, int pageNumber, int pageSize)
+            return result;
+        }
+        public async Task<List<(Movie Movie, double Score)>> GetMoviesBySimilarUsersAsync(string userId)
         {
             var targetUserPreferences = await GetUserPreferencesAsync(userId);
 
@@ -558,7 +631,7 @@ namespace Infrastructure.Repositories
 
             if (targetUserMovieIds.Count == 0)
             {
-                return await GetPopularMoviesAsync(pageNumber, pageSize);
+                return await GetPopularMoviesAsync();
             }
 
             var candidateUserIds = await GetCandidateUserIds(userId, targetUserMovieIds);
@@ -600,7 +673,7 @@ namespace Infrastructure.Repositories
             if (candidateUserVectors.Count == 0)
             {
                 _logger.LogInformation("No candidate users found. Falling back to popular movies.");
-                return await GetPopularMoviesAsync(pageNumber, pageSize);
+                return await GetPopularMoviesAsync();
             }
 
             // ============================================
@@ -667,7 +740,7 @@ namespace Infrastructure.Repositories
 
             if (!userSimilarities.Any())
             {
-                return await GetPopularMoviesAsync(pageNumber, pageSize);
+                return await GetPopularMoviesAsync();
             }
 
             var sortedSimilarities = userSimilarities
@@ -715,43 +788,45 @@ namespace Infrastructure.Repositories
             // STEP 6: RETURN TOP RECOMMENDATIONS
             // ============================================
 
-            var sortedMovieIds = movieScores
+            if (!movieScores.Any())
+            {
+                return await GetPopularMoviesAsync();
+            }
+
+            // Sort by score (descending) and apply pagination
+            var sortedMovieScores = movieScores
                 .OrderByDescending(kvp => kvp.Value)
-                .Select(kvp => kvp.Key)
                 .ToList();
 
-            var skip = (pageNumber - 1) * pageSize;
-            var pagedMovieIds = sortedMovieIds
-                .Skip(skip)
-                .Take(pageSize)
+            var pagedMovieScores = sortedMovieScores
+                .Take(100)
                 .ToList();
 
+            // Extract movie IDs
+            var pagedMovieIds = pagedMovieScores.Select(ms => ms.Key).ToList();
+
+            // Load full movie entities
             var movies = await _context.Movies
                 .AsNoTracking()
                 .Where(m => pagedMovieIds.Contains(m.Id))
                 .ToListAsync();
 
-            var orderedMovies = pagedMovieIds
-                .Select(id => movies.First(m => m.Id == id))
+            // Create dictionary for quick lookup
+            var moviesDict = movies.ToDictionary(m => m.Id);
+
+            // Return movies with scores, maintaining order
+            var result = pagedMovieScores
+                .Select(ms => (moviesDict[ms.Key], ms.Value))
                 .ToList();
 
-            _logger.LogInformation("Returning {Count} movies for page {Page} (page size: {PageSize})",
-                orderedMovies.Count, pageNumber, pageSize);
+            _logger.LogInformation("Returning {Count} movies with scores). Score range: {Min:F3} - {Max:F3}",
+                result.Count,
+                result.Any() ? result.Min(r => r.Value) : 0,
+                result.Any() ? result.Max(r => r.Value) : 0);
 
-            return orderedMovies;
+            return result;
         }
-
-        public Task<PagedResult<Movie>> GetHybridRecommendationsAsync(string userId, int pageNumber = 1, int pageSize = 20)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<List<Movie>> GetMoviesByMatrixFactorizationAsync(string userId, int pageNumber, int pageSize)
-        {
-            throw new NotImplementedException();
-        }
-
-        public async Task<List<Movie>> GetPopularMoviesAsync(int pageNumber, int pageSize)
+        public async Task<List<(Movie Movie, double Score)>> GetPopularMoviesAsync()
         {
             var popularMovieScores = await _context.Movies
                 .AsNoTracking()
@@ -779,23 +854,170 @@ namespace Infrastructure.Repositories
                 .OrderByDescending(m => m.Score)
                 .ToList();
 
-            var skip = (pageNumber - 1) * pageSize;
-            var pagedMovieIds = scoredMovies
-                .Skip(skip)
-                .Take(pageSize)
-                .Select(m => m.MovieId)
+            var pagedMovieScores = scoredMovies
+                .Take(100)
                 .ToList();
+
+            if (!pagedMovieScores.Any())
+            {
+                _logger.LogInformation("No popular movies found");
+                return new List<(Movie Movie, double Score)>();
+            }
+
+            var pagedMovieIds = pagedMovieScores.Select(m => m.MovieId).ToList();
 
             var movies = await _context.Movies
                 .AsNoTracking()
                 .Where(m => pagedMovieIds.Contains(m.Id))
                 .ToListAsync();
 
-            var orderedMovies = pagedMovieIds
-                .Select(id => movies.First(m => m.Id == id))
+            var moviesDict = movies.ToDictionary(m => m.Id);
+            var scoresDict = pagedMovieScores.ToDictionary(m => m.MovieId, m => m.Score);
+
+            var result = pagedMovieIds
+                .Select(id => (moviesDict[id], scoresDict[id]))
                 .ToList();
 
-            return orderedMovies;
+            _logger.LogInformation("Returning {Count} popular movies with scores). Score range: {Min:F3} - {Max:F3}",
+                result.Count,
+                result.Any() ? result.Min(r => r.Item2) : 0,
+                result.Any() ? result.Max(r => r.Item2) : 0);
+
+            return result;
+        }
+        public async Task<PagedResult<Movie>> GetHybridRecommendationsAsync(string userId, int pageNumber = 1, int pageSize = 20)
+        {
+            if (pageNumber < 1) pageNumber = 1;
+            if (pageSize < 1) pageSize = 20;
+            if (pageSize > 100) pageSize = 20;
+            int totalCount;
+
+            var totalInteractions = await GetUserInteractions(userId);
+
+            var cacheKey = $"hybrid_recommendations_{userId}";
+            List<int> cachedMovieIds = null;
+            bool useCache = false;
+
+            if (_cache.TryGetValue(cacheKey, out cachedMovieIds))
+            {
+                useCache = true;
+                _logger.LogInformation("Using cached hybrid recommendations for user {UserId}. Cached count: {Count}",
+                    userId, cachedMovieIds.Count);
+            }
+
+            if (!useCache)
+            {
+                List<(Movie Movie, double Score)> contentResults;
+                List<(Movie Movie, double Score)> collaborativeResults;
+
+                if (totalInteractions == 0)
+                {
+                    // Popularity only
+                    _logger.LogInformation("User {UserId} has no interactions. Using popularity.", userId);
+                    var popularResults = await GetPopularMoviesAsync();
+                    cachedMovieIds = popularResults
+                        .OrderByDescending(r => r.Score)
+                        .Take(100)
+                        .Select(r => r.Movie.Id)
+                        .ToList();
+                }
+                else if (totalInteractions < 20)
+                {
+                    // Content-based only
+                    _logger.LogInformation("User {UserId} has {Count} interactions (< 20). Using content-based only.",
+                        userId, totalInteractions);
+                    contentResults = await GetSimilarMoviesByContentAsync(userId);
+                    cachedMovieIds = contentResults
+                        .OrderByDescending(r => r.Score)
+                        .Take(100)
+                        .Select(r => r.Movie.Id)
+                        .ToList();
+                }
+                else
+                {
+                    // Hybrid: Get 100 from each algorithm
+                    _logger.LogInformation("User {UserId} has {Count} interactions (>= 20). Using hybrid.",
+                        userId, totalInteractions);
+
+                    contentResults = await GetSimilarMoviesByContentAsync(userId);
+                    collaborativeResults = await GetMoviesBySimilarUsersAsync(userId);
+
+                    _logger.LogInformation("Content-based: {ContentCount}, Collaborative: {CollabCount}",
+                        contentResults.Count, collaborativeResults.Count);
+
+                    // Extract scores
+                    var contentScores = contentResults.ToDictionary(r => r.Movie.Id, r => r.Score);
+                    var collaborativeScores = collaborativeResults.ToDictionary(r => r.Movie.Id, r => r.Score);
+
+                    // Normalize scores
+                    NormalizeScores(contentScores);
+                    NormalizeScores(collaborativeScores);
+
+                    // Combine scores
+                    var allMovieIds = contentScores.Keys.Union(collaborativeScores.Keys).ToHashSet();
+                    const double contentWeight = 0.6;
+                    const double collaborativeWeight = 0.4;
+
+                    var hybridScores = new Dictionary<int, double>();
+                    foreach (var movieId in allMovieIds)
+                    {
+                        var contentScore = contentScores.GetValueOrDefault(movieId, 0.0);
+                        var collabScore = collaborativeScores.GetValueOrDefault(movieId, 0.0);
+                        var hybridScore = (contentScore * contentWeight) + (collabScore * collaborativeWeight);
+                        hybridScores[movieId] = hybridScore;
+                    }
+
+                    // Sort and take top 100
+                    cachedMovieIds = hybridScores
+                        .OrderByDescending(kvp => kvp.Value)
+                        .Take(100)
+                        .Select(kvp => kvp.Key)
+                        .ToList();
+                }
+
+                // Cache the results
+                var cacheOptions = new MemoryCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1),
+                    SlidingExpiration = TimeSpan.FromMinutes(20)
+                };
+
+                _cache.Set(cacheKey, cachedMovieIds, cacheOptions);
+                _logger.LogInformation("Cached {Count} hybrid recommendations for user {UserId}",
+                    cachedMovieIds.Count, userId);
+            }
+
+            totalCount = cachedMovieIds.Count;
+            var skip = (pageNumber - 1) * pageSize;
+            var pagedMovieIds = cachedMovieIds
+                .Skip(skip)
+                .Take(pageSize)
+                .ToList();
+
+            if (!pagedMovieIds.Any())
+            {
+                _logger.LogInformation("No movies found for page {Page}. Returning empty result.", pageNumber);
+                return new PagedResult<Movie>() { Data = new List<Movie>(), PageNumber = pageNumber, PageSize = pageSize, TotalCount = totalCount };
+            }
+
+            var movies = await _context.Movies
+                .AsNoTracking()
+                .Where(m => pagedMovieIds.Contains(m.Id))
+                .ToListAsync();
+
+            var moviesDict = movies.ToDictionary(m => m.Id);
+            var orderedMovies = pagedMovieIds
+                .Select(id => moviesDict[id])
+                .ToList();
+
+            _logger.LogInformation("Returning {Count} movies for page {Page} (page size: {PageSize})",
+                orderedMovies.Count, pageNumber, pageSize);
+
+            return new PagedResult<Movie>() { Data = orderedMovies, PageNumber = pageNumber, PageSize = pageSize, TotalCount = totalCount };
+        }
+        public Task<List<(Movie Movie, double Score)>> GetMoviesByMatrixFactorizationAsync(string userId)
+        {
+            throw new NotImplementedException();
         }
     }
 }
