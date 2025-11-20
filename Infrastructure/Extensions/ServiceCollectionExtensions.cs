@@ -33,6 +33,7 @@ namespace Infrastructure.Extensions
             services.AddScoped<IActorRepository, ActorRepository>();
             services.AddScoped<IDirectorRepository, DirectorRepository>();
             services.AddScoped<IFuzzyMatcher, FuzzyMatcher>();
+            services.AddScoped<IQueryExpander, QueryExpander>();
 
             return services;
         }
