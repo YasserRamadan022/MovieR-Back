@@ -6,6 +6,7 @@ using Core.Helper;
 using Core.Ports;
 using Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
@@ -24,7 +25,7 @@ namespace Infrastructure.Repositories
             _logger = logger;
             _cache = cache;
         }
-        public async Task<UserPreferences> GetUserPreferencesAsync(string userId)
+        private async Task<UserPreferences> GetUserPreferencesAsync(string userId)
         {
             var ratings = await _context.Ratings
                 .AsNoTracking()
@@ -81,6 +82,46 @@ namespace Infrastructure.Repositories
                 PreferredActors = preferredActors,
                 PreferredDirectors = preferredDirectors
             };
+        }
+        private async Task<List<string>> GetCandidateUserIds(string targetUserId, HashSet<int> targetUserPreferences)
+        {
+            var ratings = await _context.Ratings
+                .AsNoTracking()
+                .Where(r => targetUserPreferences.Contains(r.MovieId) && r.RatingValue > 4 && r.UserId != targetUserId)
+                .Select(r => new { r.UserId, r.MovieId })
+                .ToListAsync();
+            
+            var upvotes = await _context.Votes
+                .AsNoTracking()
+                .Where(v => targetUserPreferences.Contains(v.MovieId) && v.VoteType == VoteType.Upvote && v.UserId != targetUserId)
+                .Select(v => new { v.UserId, v.MovieId })
+                .ToListAsync();
+
+            var favorites = await _context.Favorites
+                .AsNoTracking()
+                .Where(f => targetUserPreferences.Contains(f.MovieId) && f.UserId != targetUserId)
+                .Select(f => new { f.UserId, f.MovieId })
+                .ToListAsync();
+
+            var interests = await _context.Interests
+                .AsNoTracking()
+                .Where(i => targetUserPreferences.Contains(i.MovieId) && i.UserId != targetUserId)
+                .Select(i => new { i.UserId, i.MovieId })
+                .ToListAsync();
+
+            var allCandidateUsers = ratings
+                .Union(upvotes)
+                .Union(favorites)
+                .Union(interests)
+                .ToList();
+
+            var allActiveUsers = allCandidateUsers
+                .GroupBy(u => u.UserId)
+                .Where(g => g.Count() >= 5)
+                .Select(g => g.Key)
+                .ToList();
+
+            return allActiveUsers;
         }
         public async Task<List<Movie>> GetSimilarMoviesByContentAsync(UserPreferences preferences, int pageNumber, int pageSize)
         {
@@ -411,6 +452,144 @@ namespace Infrastructure.Repositories
             return topMoviesOrdered;
         }
 
+        public async Task<List<Movie>> GetMoviesBySimilarUsersAsync(string userId, int pageNumber, int pageSize)
+        {
+            var targetUserPreferences = await GetUserPreferencesAsync(userId);
+
+            var targetUserMovieIds = targetUserPreferences.RatedMovies.Keys
+                                    .Union(targetUserPreferences.UpvotedMovies)
+                                    .Union(targetUserPreferences.FavoritedMovies)
+                                    .Union(targetUserPreferences.InterestedMovies)
+                                    .Distinct()
+                                    .ToHashSet();
+
+            if (targetUserMovieIds.Count == 0)
+            {
+                return await GetPopularMoviesAsync(pageNumber, pageSize);
+            }
+
+            var candidateUserIds = await GetCandidateUserIds(userId, targetUserMovieIds);
+
+            // ============================================
+            // STEP 1: BUILD TARGET USER VECTOR
+            // ============================================
+
+            var targetUserVector = new Dictionary<int, double>();
+            foreach (var movieId in targetUserMovieIds)
+            {
+                if (targetUserPreferences.RatedMovies.ContainsKey(movieId))
+                {
+                    var rating = targetUserPreferences.RatedMovies[movieId];
+                    targetUserVector[movieId] = (double)rating / 10.0;
+                }
+                else if (targetUserPreferences.FavoritedMovies.Contains(movieId))
+                {
+                    targetUserVector[movieId] = 0.9;
+                }
+                else if (targetUserPreferences.UpvotedMovies.Contains(movieId))
+                {
+                    targetUserVector[movieId] = 0.7;
+                }
+                else if (targetUserPreferences.InterestedMovies.Contains(movieId))
+                {
+                    targetUserVector[movieId] = 0.5;
+                }
+            }
+
+            // ============================================
+            // STEP 2: BUILD CANDITADE USERS VECTOR
+            // ============================================
+
+            var candidateUserVectors = new Dictionary<string, Dictionary<int, double>>();
+
+            var candidateRatings = await _context.Ratings
+                .AsNoTracking()
+                .Where(r => candidateUserIds.Contains(r.UserId) && r.RatingValue > 4)
+                .Select(r => new { r.UserId, r.MovieId, r.RatingValue })
+                .ToListAsync();
+
+            var candidateUpvotes = await _context.Votes
+                .AsNoTracking()
+                .Where(v => candidateUserIds.Contains(v.UserId) && v.VoteType == VoteType.Upvote)
+                .Select(v => new { v.UserId, v.MovieId })
+                .ToListAsync();
+
+            var candidateFavorites = await _context.Favorites
+                .AsNoTracking()
+                .Where(f => candidateUserIds.Contains(f.UserId))
+                .Select(f => new { f.UserId, f.MovieId })
+                .ToListAsync();
+
+            var candidateInterests = await _context.Interests
+                .AsNoTracking()
+                .Where(i => candidateUserIds.Contains(i.UserId))
+                .Select(i => new { i.UserId, i.MovieId })
+                .ToListAsync();
+
+            var uniqueCandidateUserIds = candidateRatings.Select(r => r.UserId)
+                .Union(candidateUpvotes.Select(v => v.UserId))
+                .Union(candidateFavorites.Select(f => f.UserId))
+                .Union(candidateInterests.Select(i => i.UserId))
+                .Distinct()
+                .ToList();
+
+            foreach (var candidateUserId in uniqueCandidateUserIds)
+            {
+                var userVector = new Dictionary<int, double>();
+
+                var userRatings = candidateRatings
+                    .Where(r => r.UserId == candidateUserId)
+                    .ToList();
+
+                foreach (var rating in userRatings)
+                {
+                    userVector[rating.MovieId] = (double)rating.RatingValue / 10.0;
+                }
+
+                var userFavorites = candidateFavorites
+                    .Where(f => f.UserId == candidateUserId)
+                    .Select(f => f.MovieId)
+                    .ToList();
+
+                foreach (var movieId in userFavorites)
+                {
+                    if (!userVector.ContainsKey(movieId))
+                    {
+                        userVector[movieId] = 0.9;
+                    }
+                }
+
+                var userUpvotes = candidateUpvotes
+                    .Where(v => v.UserId == candidateUserId)
+                    .Select(v => v.MovieId)
+                    .ToList();
+
+                foreach (var movieId in userUpvotes)
+                {
+                    if (!userVector.ContainsKey(movieId))
+                    {
+                        userVector[movieId] = 0.7;
+                    }
+                }
+
+                var userInterests = candidateInterests
+                    .Where(i => i.UserId == candidateUserId)
+                    .Select(i => i.MovieId)
+                    .ToList();
+
+                foreach (var movieId in userInterests)
+                {
+                    if (!userVector.ContainsKey(movieId))
+                    {
+                        userVector[movieId] = 0.5;
+                    }
+                }
+
+                candidateUserVectors[candidateUserId] = userVector;
+            }
+            throw new NotImplementedException();
+        }
+
         public Task<PagedResult<Movie>> GetHybridRecommendationsAsync(string userId, int pageNumber = 1, int pageSize = 20)
         {
             throw new NotImplementedException();
@@ -421,15 +600,9 @@ namespace Infrastructure.Repositories
             throw new NotImplementedException();
         }
 
-        public Task<List<Movie>> GetMoviesBySimilarUsersAsync(string userId, int pageNumber, int pageSize)
-        {
-            throw new NotImplementedException();
-        }
-
         public Task<List<Movie>> GetPopularMoviesAsync(int pageNumber, int pageSize)
         {
             throw new NotImplementedException();
         }
-
     }
 }

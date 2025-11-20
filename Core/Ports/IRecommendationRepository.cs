@@ -11,9 +11,6 @@ namespace Core.Ports
 {
     public interface IRecommendationRepository
     {
-        // Get user preferences (ratings, votes, favorites, interests)
-        Task<UserPreferences> GetUserPreferencesAsync(string userId);
-
         // Content-Based: Get movies similar to user's liked movies
         Task<List<Movie>> GetSimilarMoviesByContentAsync(UserPreferences preferences, int pageNumber, int pageSize);
 
