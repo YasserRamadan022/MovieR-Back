@@ -5,6 +5,7 @@ using Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -34,6 +35,8 @@ namespace Infrastructure.Extensions
             services.AddScoped<IDirectorRepository, DirectorRepository>();
             services.AddScoped<IFuzzyMatcher, FuzzyMatcher>();
             services.AddScoped<IQueryExpander, QueryExpander>();
+            services.AddSingleton<IBM25Scorer, BM25Scorer>();
+            services.AddHostedService<BM25InitializationService>();
 
             return services;
         }
