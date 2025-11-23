@@ -36,6 +36,10 @@ namespace MovieRecommendation
             builder.Configuration.GetSection("JwtSettings").Bind(jwtSettings);
             builder.Services.AddSingleton(jwtSettings);
 
+            var corsSettings = new CorsSettings();
+            builder.Configuration.GetSection("CorsSettings").Bind(corsSettings);
+            builder.Services.AddSingleton(corsSettings);
+
 
             builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
             {
@@ -80,6 +84,30 @@ namespace MovieRecommendation
                 };
             });
 
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowFrontend", policy =>
+                {
+                    if (corsSettings.AllowedOrigins != null && corsSettings.AllowedOrigins.Length > 0)
+                    {
+                        policy.WithOrigins(corsSettings.AllowedOrigins)
+                              .AllowAnyHeader()
+                              .AllowAnyMethod()
+                              .AllowCredentials();
+                    }
+                    else
+                    {
+                        if (builder.Environment.IsDevelopment())
+                        {
+                            policy.WithOrigins("http://localhost:4200")
+                                  .AllowAnyHeader()
+                                  .AllowAnyMethod()
+                                  .AllowCredentials();
+                        }
+                    }
+                });
+            });
+
             builder.Services.AddControllers();
             builder.Services.AddInfrastructure(builder.Configuration)
                 .AddApplication()
@@ -103,6 +131,7 @@ namespace MovieRecommendation
 
             app.UseHttpsRedirection();
 
+            app.UseCors("AllowFrontend");
             app.UseAuthentication();
             app.UseAuthorization();
 
