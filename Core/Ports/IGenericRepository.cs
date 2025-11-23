@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Core.Domain.Common;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -12,6 +13,6 @@ namespace Core.Ports
         Task<T> AddAsync(T entity);
         Task<T> UpdateAsync(T entity);
         Task<bool> DeleteAsync(T entity);
-        Task<ICollection<T>> GetAll();
+        Task<PagedResult<T>> GetAll(int pageNumber = 1, int pageSize = 20);
     }
 }

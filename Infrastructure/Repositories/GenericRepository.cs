@@ -1,13 +1,15 @@
-﻿using Core.Ports;
+﻿using Core.Domain.Common;
+using Core.Domain.Common.RepositoryException;
+using Core.Domain.Entities;
+using Core.Ports;
 using Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using Core.Domain.Common.RepositoryException;
 
 namespace Infrastructure.Repositories
 {
@@ -21,14 +23,25 @@ namespace Infrastructure.Repositories
             _logger = logger;
         }
 
-        public async Task<ICollection<T>> GetAll()
+        public async Task<PagedResult<T>> GetAll(int pageNumber = 1, int pageSize = 20)
         {
             try
             {
                 _logger.LogInformation("Attempting to get all data of entity of type {EntityType}", typeof(T).Name);
-                var data = await _context.Set<T>().ToListAsync();
+                var genres = await _context.Set<T>()
+                                        .Skip((pageNumber - 1) * pageSize)
+                                        .Take(pageSize)
+                                        .ToListAsync();
+
+                var totalCount = await _context.Set<T>().CountAsync();
                 _logger.LogInformation("Entity of type {EntityType} all data retrieved successfully", typeof(T).Name);
-                return data;
+                return new PagedResult<T>
+                {
+                    Data = genres,
+                    PageNumber = pageNumber,
+                    PageSize = pageSize,
+                    TotalCount = totalCount
+                };
             }
             catch (Exception ex)
             {

@@ -1,4 +1,5 @@
-﻿using Application.DTOs.Dashboard;
+﻿using Application.DTOs;
+using Application.DTOs.Dashboard;
 using Application.Interfaces;
 using AutoMapper;
 using Core.Domain.Common;
@@ -52,6 +53,33 @@ namespace Application.UseCases
             {
                 _logger.LogError(ex, "An unexpected error occurred while adding genre");
                 return new OpResult() { Success = false, Message = "Something went wrong", StatusCode = 500 };
+            }
+        }
+
+        public async Task<OpResult> GetAll(int pageNumber = 1, int pageSize = 20)
+        {
+            if (pageNumber < 1) pageNumber = 1;
+            if (pageSize < 1) pageSize = 20;
+            if (pageSize > 100) pageSize = 20;
+            try
+            {
+                var result = await _genreRepository.GetAll(pageNumber, pageSize);
+                var genresList = _mapper.Map<List<GenresDTO>>(result.Data);
+
+                var pagedResult = new PagedResult<GenresDTO>
+                {
+                    Data = genresList,
+                    PageNumber = result.PageNumber,
+                    PageSize = result.PageSize,
+                    TotalCount = result.TotalCount
+                };
+
+                return new OpResult() { Success = true, Message = "Data retrieved successfully", StatusCode = 200, Data = pagedResult };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting genres");
+                return new OpResult() { Success = false, Message = "Something went wrong", StatusCode = 500, Data = null };
             }
         }
     }

@@ -48,6 +48,7 @@ namespace Application.Mappings
             CreateMap<AddDirectorDTO, Director>();
             CreateMap<AddGenreDTO, Genre>();
             CreateMap<Movie, MoviesDTO>();
+            CreateMap<Genre, GenresDTO>();
         }
     }
 }

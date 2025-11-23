@@ -11,5 +11,6 @@ namespace Application.Interfaces
     public interface IGenreUseCase
     {
         Task<OpResult> AddGenre(AddGenreDTO genreDTO);
+        Task<OpResult> GetAll(int pageNumber = 1, int pageSize = 20);
     }
 }
