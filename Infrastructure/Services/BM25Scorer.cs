@@ -111,16 +111,10 @@ namespace Infrastructure.Services
             if (string.IsNullOrWhiteSpace(documentText) || queryTerms == null || !queryTerms.Any())
                 return 0;
 
-            // Get document length
-            if (!_documentLengths.TryGetValue(documentId, out int docLength))
-            {
-                var terms = Tokenize(documentText);
-                docLength = terms.Count;
-                _documentLengths[documentId] = docLength;
-            }
-
-            // Tokenize document
+            // Tokenize document to get actual field length (not stored combined length!)
             var documentTerms = Tokenize(documentText);
+            int docLength = documentTerms.Count;  // Use actual field length, not stored combined length
+
             var termFrequencies = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
             // Count term frequencies in document
@@ -147,7 +141,7 @@ namespace Infrastructure.Services
                 if (tf == 0)
                     continue; // Term not in document, skip
 
-                // BM25 formula
+                // BM25 formula - use actual field length for normalization
                 double numerator = idf * tf * (K1 + 1);
                 double denominator = tf + K1 * (1 - B + B * (docLength / _averageDocumentLength));
                 double termScore = numerator / denominator;

@@ -49,7 +49,6 @@ namespace Infrastructure.Services
 
             return d[n, m];
         }
-
         public string CorrectNamesInQuery(string query, List<string> actorNames, List<string> directorNames)
         {
             if (string.IsNullOrWhiteSpace(query))
@@ -67,73 +66,208 @@ namespace Infrastructure.Services
             if (!allNames.Any())
                 return query;
 
-            // Split query into words
             var words = query.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
             var correctedWords = new List<string>();
+            int processedIndex = -1;
 
-            foreach (var word in words)
+            for (int i = 0; i < words.Length; i++)
             {
-                // Check if this word (or combination with next word) matches a name
-                string correctedWord = word;
+                if (i <= processedIndex)
+                    continue;
 
-                // Try matching single word
-                correctedWord = FindClosestMatch(word, allNames, maxDistance: 2);
+                string correctedWord = words[i];
 
-                // If single word didn't match well, try two-word combinations (for "leonardo dicaprio")
-                if (correctedWord == word && words.Length > 1)
+                correctedWord = FindClosestMatch(words[i], allNames);
+
+                if (correctedWord == words[i] && i < words.Length - 1)
                 {
-                    int currentIndex = Array.IndexOf(words, word);
-                    if (currentIndex < words.Length - 1)
-                    {
-                        string twoWord = $"{word} {words[currentIndex + 1]}";
-                        string twoWordMatch = FindClosestMatch(twoWord, allNames, maxDistance: 3);
+                    string twoWord = $"{words[i]} {words[i + 1]}";
+                    string twoWordMatch = FindClosestMatch(twoWord, allNames);
 
-                        if (twoWordMatch != twoWord)
-                        {
-                            correctedWord = twoWordMatch;
-                            // Skip next word since we matched two words
-                            if (currentIndex + 1 < words.Length)
-                                words[currentIndex + 1] = ""; // Mark as processed
-                        }
+                    if (twoWordMatch != twoWord)
+                    {
+                        correctedWord = twoWordMatch;
+                        processedIndex = i + 1;
                     }
                 }
 
                 correctedWords.Add(correctedWord);
             }
 
-            // Reconstruct query, removing empty words
             correctedQuery = string.Join(" ", correctedWords.Where(w => !string.IsNullOrWhiteSpace(w)));
 
             return correctedQuery;
         }
-
         public string FindClosestMatch(string query, List<string> candidates, int maxDistance = 2)
         {
             if (string.IsNullOrWhiteSpace(query) || candidates == null || !candidates.Any())
                 return query;
 
-            // Normalize query (lowercase, trim)
             string normalizedQuery = query.ToLowerInvariant().Trim();
+            int queryLength = normalizedQuery.Length;
 
-            // Find best match
-            var bestMatch = candidates
-                .Select(candidate => new
+            int adaptiveMaxDistance = queryLength <= 6
+                ? Math.Max(3, (int)(queryLength * 0.5))
+                : Math.Max(4, (int)(queryLength * 0.3));
+
+            var fullNameMatches = candidates
+                .Select(candidate =>
                 {
-                    Candidate = candidate,
-                    Distance = CalculateEditDistance(normalizedQuery, candidate.ToLowerInvariant().Trim())
+                    string candidateLower = candidate.ToLowerInvariant().Trim();
+                    int distance = CalculateEditDistance(normalizedQuery, candidateLower);
+
+                    bool isSubstringMatch = candidateLower.Contains(normalizedQuery) ||
+                                           normalizedQuery.Contains(candidateLower);
+
+                    if (isSubstringMatch && queryLength >= 3)
+                    {
+                        distance = 0;
+                    }
+
+                    return new
+                    {
+                        Candidate = candidate,
+                        CandidateLower = candidateLower,
+                        Distance = distance,
+                        IsFullMatch = true,
+                        IsSubstringMatch = isSubstringMatch
+                    };
                 })
-                .Where(x => x.Distance <= maxDistance)
+                .Where(x => x.Distance <= adaptiveMaxDistance || x.IsSubstringMatch);
+
+            var wordMatches = candidates
+                .SelectMany(candidate =>
+                {
+                    var words = candidate.ToLowerInvariant().Trim()
+                        .Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+
+                    return words.Select(word =>
+                    {
+                        int distance = CalculateEditDistance(normalizedQuery, word);
+
+                        bool isSubstringMatch = word.Contains(normalizedQuery) ||
+                                               normalizedQuery.Contains(word);
+
+                        if (isSubstringMatch && queryLength >= 3)
+                        {
+                            distance = 0;
+                        }
+
+                        return new
+                        {
+                            Candidate = candidate,
+                            CandidateLower = word,
+                            Distance = distance,
+                            IsFullMatch = false,
+                            IsSubstringMatch = isSubstringMatch
+                        };
+                    });
+                })
+                .Where(x => x.Distance <= adaptiveMaxDistance || x.IsSubstringMatch);
+
+            var allMatches = fullNameMatches.Concat(wordMatches)
                 .OrderBy(x => x.Distance)
-                .ThenBy(x => Math.Abs(x.Candidate.Length - normalizedQuery.Length)) // Prefer similar length
+                .ThenBy(x => x.IsSubstringMatch ? 0 : 1)
+                .ThenBy(x => x.IsFullMatch ? 0 : 1)
+                .ThenBy(x => Math.Abs(x.Candidate.Length - queryLength))
                 .FirstOrDefault();
 
-            if (bestMatch != null)
+            if (allMatches != null)
             {
-                return bestMatch.Candidate;
+                return allMatches.Candidate;
             }
 
-            // No good match found, return original
             return query;
+        }
+
+        public List<string> FindAllMatchingNames(string query, List<string> actorNames, List<string> directorNames)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+                return new List<string>();
+
+            var allNames = new List<string>();
+            if (actorNames != null)
+                allNames.AddRange(actorNames);
+            if (directorNames != null)
+                allNames.AddRange(directorNames);
+
+            if (!allNames.Any())
+                return new List<string>();
+
+            string normalizedQuery = query.ToLowerInvariant().Trim();
+            int queryLength = normalizedQuery.Length;
+
+            int adaptiveMaxDistance = queryLength <= 6
+                ? Math.Max(3, (int)(queryLength * 0.5))
+                : Math.Max(4, (int)(queryLength * 0.3));
+
+            var matchingNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var candidate in allNames)
+            {
+                string candidateLower = candidate.ToLowerInvariant().Trim();
+                var words = candidateLower.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+
+                bool isMatch = false;
+
+                // PRIORITIZE WORD-LEVEL MATCHES (more precise)
+                foreach (var word in words)
+                {
+                    // 1. Exact word match (highest priority) - e.g., "leo" = "leo"
+                    if (word.Equals(normalizedQuery, StringComparison.OrdinalIgnoreCase))
+                    {
+                        isMatch = true;
+                        break;
+                    }
+
+                    // 2. Prefix match (e.g., "leo" matches "leonardo") - only if query is at least 3 chars
+                    if (queryLength >= 3 && word.StartsWith(normalizedQuery, StringComparison.OrdinalIgnoreCase))
+                    {
+                        isMatch = true;
+                        break;
+                    }
+
+                    // 3. Fuzzy match with edit distance (e.g., "lenard" matches "leonardo")
+                    // Use stricter threshold for word-level fuzzy matching
+                    int wordDistance = CalculateEditDistance(normalizedQuery, word);
+                    int wordMaxDistance = Math.Min(adaptiveMaxDistance, Math.Max(2, (int)(word.Length * 0.3)));
+                    
+                    if (wordDistance <= wordMaxDistance && wordDistance < word.Length)
+                    {
+                        isMatch = true;
+                        break;
+                    }
+                }
+
+                // Only check full name match if no word match found (and use stricter criteria)
+                if (!isMatch)
+                {
+                    // Full name match: only if query is a substring of the full name (not vice versa)
+                    // This handles cases like "leonardo dicaprio" query matching "Leonardo DiCaprio"
+                    if (candidateLower.Contains(normalizedQuery) && queryLength >= 3)
+                    {
+                        isMatch = true;
+                    }
+                    // Very close full name edit distance (stricter than word-level)
+                    else
+                    {
+                        int fullNameDistance = CalculateEditDistance(normalizedQuery, candidateLower);
+                        // Only match if edit distance is very small relative to query length
+                        int strictMaxDistance = Math.Max(2, (int)(queryLength * 0.4));
+                        if (fullNameDistance <= strictMaxDistance && fullNameDistance < candidateLower.Length / 2)
+                        {
+                            isMatch = true;
+                        }
+                    }
+                }
+
+                if (isMatch)
+                {
+                    matchingNames.Add(candidate);
+                }
+            }
+
+            return matchingNames.ToList();
         }
     }
 }

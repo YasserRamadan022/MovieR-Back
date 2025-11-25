@@ -37,6 +37,7 @@ namespace Infrastructure.Extensions
             services.AddScoped<IQueryExpander, QueryExpander>();
             services.AddSingleton<IBM25Scorer, BM25Scorer>();
             services.AddHostedService<BM25InitializationService>();
+            services.AddScoped<ISearchRepository, SearchRepository>();
 
             return services;
         }

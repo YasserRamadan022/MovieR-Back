@@ -33,5 +33,14 @@ namespace Core.Ports
         /// <param name="directorNames">List of all director names in database</param>
         /// <returns>Corrected query with proper names</returns>
         string CorrectNamesInQuery(string query, List<string> actorNames, List<string> directorNames);
+
+        /// <summary>
+        /// Finds all matching actor/director names for a query (returns multiple matches)
+        /// </summary>
+        /// <param name="query">The search query (e.g., "leo")</param>
+        /// <param name="actorNames">List of all actor names in database</param>
+        /// <param name="directorNames">List of all director names in database</param>
+        /// <returns>List of all matching names (e.g., ["Melissa Leo", "Leonardo DiCaprio"])</returns>
+        List<string> FindAllMatchingNames(string query, List<string> actorNames, List<string> directorNames);
     }
 }
