@@ -22,7 +22,7 @@ namespace MovieRecommendation.Controllers.Dashboard
             return StatusCode(result.StatusCode, result);
         }
         [HttpGet("ActorMovies/{actorId}")]
-        public async Task<IActionResult> ActorMovies(int actorId, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
+        public async Task<IActionResult> ActorMovies(int actorId, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 20)
         {
             var result = await _actorUseCase.GetActorMovies(actorId, pageNumber, pageSize);
             return StatusCode(result.StatusCode, result);

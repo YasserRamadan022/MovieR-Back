@@ -27,7 +27,7 @@ namespace Application.UseCases
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
         }
-        public async Task<OpResult> GetDirectorMovies(int directorId, int pageNumber = 1, int pageSize = 10)
+        public async Task<OpResult> GetDirectorMovies(int directorId, int pageNumber = 1, int pageSize = 20)
         {
             if (directorId <= 0)
             {
@@ -37,6 +37,14 @@ namespace Application.UseCases
 
             try
             {
+                var director = await _directorRepository.GetByIdAsync(directorId);
+                if (director == null)
+                {
+                    return new OpResult() { Success = false, Message = "Invalid Director", StatusCode = 400, Data = null };
+                }
+
+                var directorData = _mapper.Map<DirectorDTO>(director);
+
                 var result = await _directorRepository.GetDirectorMovies(directorId, pageNumber, pageSize);
                 var moviesList = _mapper.Map<List<MoviesDTO>>(result.Data);
 
@@ -48,7 +56,7 @@ namespace Application.UseCases
                     TotalCount = result.TotalCount
                 };
 
-                return new OpResult() { Success = true, Message = "Data retrieved successfully", StatusCode = 200, Data = pagedResult };
+                return new OpResult() { Success = true, Message = "Data retrieved successfully", StatusCode = 200, Data = new { directorData, pagedResult } };
             }
             catch (RepositoryException ex)
             {

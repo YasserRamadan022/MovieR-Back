@@ -26,7 +26,7 @@ namespace Application.UseCases
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
         }
-        public async Task<OpResult> GetActorMovies(int actorId, int pageNumber = 1, int pageSize = 10)
+        public async Task<OpResult> GetActorMovies(int actorId, int pageNumber = 1, int pageSize = 20)
         {
             if (actorId <= 0)
             {
@@ -36,6 +36,14 @@ namespace Application.UseCases
 
             try
             {
+                var actor = await _actorRepository.GetByIdAsync(actorId);
+                if (actor == null)
+                {
+                    return new OpResult() { Success = false, Message = "Invalid Actor", StatusCode = 400, Data = null };
+                }
+
+                var actorData = _mapper.Map<ActorDTO>(actor);
+
                 var result = await _actorRepository.GetActorMovies(actorId, pageNumber, pageSize);
                 var moviesList = _mapper.Map<List<MoviesDTO>>(result.Data);
 
@@ -47,7 +55,7 @@ namespace Application.UseCases
                     TotalCount = result.TotalCount
                 };
 
-                return new OpResult() { Success = true, Message = "Data retrieved successfully", StatusCode = 200, Data = pagedResult };
+                return new OpResult() { Success = true, Message = "Data retrieved successfully", StatusCode = 200, Data = new { actorData, pagedResult } };
             }
             catch (RepositoryException ex)
             {
