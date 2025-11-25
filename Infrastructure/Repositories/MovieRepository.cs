@@ -48,6 +48,7 @@ namespace Infrastructure.Repositories
 
                 var movies = await _context.Movies
                     .Where(m => m.MovieGenres.Any(mg => mg.GenreId == genreId))
+                    .Include(m => m.Ratings)
                     .OrderByDescending(m => m.ReleaseYear)
                     .ThenBy(m => m.Title)
                     .Skip((pageNumber - 1) * pageSize)

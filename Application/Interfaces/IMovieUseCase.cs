@@ -13,6 +13,7 @@ namespace Application.Interfaces
     {
         Task<OpResult> AddMovie(AddMovieDTO movie);
         Task<OpResult> GetMoviesByGenreAsync(int genreId, int pageNumber = 1, int pageSize = 10);
+        Task<OpResult> GetMovieDetailsAsync(int movieId);
         Task<OpResult> VoteAsync(string userId, MovieVoteDTO voteDTO);
         Task<OpResult> RateAsync(string userId, MovieRateDTO rateDTO);
         Task<OpResult> RemoveRateAsync(string userId, int movieId);

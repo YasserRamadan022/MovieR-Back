@@ -6,6 +6,7 @@ using Core.Domain.Common;
 using Core.Domain.Common.RepositoryException;
 using Core.Domain.Entities;
 using Core.Ports;
+using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -40,7 +41,7 @@ namespace Application.UseCases
             {
                 var result = await _movieRepository.GetMoviesByGenreAsync(genreId, pageNumber, pageSize);
                 var moviesList = _mapper.Map<List<MoviesDTO>>(result.Data);
-                
+
                 var pagedResult = new PagedResult<MoviesDTO>
                 {
                     Data = moviesList,
@@ -221,6 +222,27 @@ namespace Application.UseCases
             catch(Exception ex)
             {
                 _logger.LogError(ex, "Error getting movies for user {UserId}", userId);
+                return new OpResult() { Success = false, Message = "Something went wrong", StatusCode = 500, Data = null };
+            }
+        }
+        public async Task<OpResult> GetMovieDetailsAsync(int movieId)
+        {
+            if(movieId <= 0)
+            {
+                _logger.LogWarning("GetMovieDetailsAsync called with invalid movie id: {MovieId}", movieId);
+                return new OpResult() { Success = false, Message = "Invalid movie id", StatusCode = 400, Data = null };
+            }
+
+            try
+            {
+                var result = await _movieRepository.GetByIdAsync(movieId);
+                var movieDetails = _mapper.Map<MovieDetailsDTO>(result);
+
+                return new OpResult() { Success = true, Message = "Data retrieved successfully", StatusCode = 200, Data = movieDetails };
+            }
+            catch(Exception ex)
+            {
+                _logger.LogError(ex, "Error getting movie details for movie {MovieId}", movieId);
                 return new OpResult() { Success = false, Message = "Something went wrong", StatusCode = 500, Data = null };
             }
         }

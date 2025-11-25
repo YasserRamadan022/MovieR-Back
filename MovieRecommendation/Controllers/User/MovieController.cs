@@ -13,9 +13,11 @@ namespace MovieRecommendation.Controllers.User
     public class MovieController : ControllerBase
     {
         private readonly IMovieUseCase _movieUseCase;
-        public MovieController(IMovieUseCase movieUseCase)
+        private readonly ISearchUseCase _searchUseCase;
+        public MovieController(IMovieUseCase movieUseCase, ISearchUseCase searchUseCase)
         {
             _movieUseCase = movieUseCase ?? throw new ArgumentNullException(nameof(movieUseCase));
+            _searchUseCase = searchUseCase ?? throw new ArgumentNullException(nameof(searchUseCase));
         }
         [Authorize]
         [HttpPost("ToggleMovieVote")]
@@ -67,6 +69,18 @@ namespace MovieRecommendation.Controllers.User
             }
 
             var result = await _movieUseCase.ForYou(userId, pageNumber, pageSize);
+            return StatusCode(result.StatusCode, result);
+        }
+        [HttpGet("Search/{query}")]
+        public async Task<IActionResult> Search(string query, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 20)
+        {
+            var result = await _searchUseCase.SearchMoviesAsync(query);
+            return StatusCode(result.StatusCode, result);
+        }
+        [HttpGet("GetMovieDetails/{movieId}")]
+        public async Task<IActionResult> GetMovieDetails(int movieId)
+        {
+            var result = await _movieUseCase.GetMovieDetailsAsync(movieId);
             return StatusCode(result.StatusCode, result);
         }
     }
