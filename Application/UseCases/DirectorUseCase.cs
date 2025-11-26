@@ -102,5 +102,32 @@ namespace Application.UseCases
                 return new OpResult() { Success = false, Message = "Something went wrong", StatusCode = 500 };
             }
         }
+        public async Task<OpResult> GetDirectors(int pageNumber = 1, int pageSize = 20)
+        {
+            if (pageNumber < 1) pageNumber = 1;
+            if (pageSize < 1) pageSize = 20;
+            if (pageSize > 100) pageSize = 20;
+
+            try
+            {
+                var result = await _directorRepository.GetAll(pageNumber, pageSize);
+                var directorsList = _mapper.Map<List<DirectorDTO>>(result.Data);
+
+                var pagedResult = new PagedResult<DirectorDTO>
+                {
+                    Data = directorsList,
+                    PageNumber = result.PageNumber,
+                    PageSize = result.PageSize,
+                    TotalCount = result.TotalCount
+                };
+
+                return new OpResult() { Success = true, Message = "Data retrieved successfully", StatusCode = 200, Data = pagedResult };
+            }
+            catch(Exception ex)
+            {
+                _logger.LogError(ex, "An unexpected error occurred while retrieving directors");
+                return new OpResult() { Success = false, Message = "Something went wrong", StatusCode = 500 };
+            }
+        }
     }
 }

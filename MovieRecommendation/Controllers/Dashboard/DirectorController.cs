@@ -22,9 +22,15 @@ namespace MovieRecommendation.Controllers.Dashboard
             return StatusCode(result.StatusCode, result);
         }
         [HttpGet("DirectorMovies/{directorId}")]
-        public async Task<IActionResult> ActorMovies(int directorId, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 20)
+        public async Task<IActionResult> DirectorMovies(int directorId, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 20)
         {
             var result = await _directorUseCase.GetDirectorMovies(directorId, pageNumber, pageSize);
+            return StatusCode(result.StatusCode, result);
+        }
+        [HttpGet("Directors")]
+        public async Task<IActionResult> Directors([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 20)
+        {
+            var result = await _directorUseCase.GetDirectors(pageNumber, pageSize);
             return StatusCode(result.StatusCode, result);
         }
     }
